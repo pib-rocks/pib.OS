@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use futures::future::join_all;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NodeStatus {
@@ -62,7 +63,7 @@ impl AsyncActionNode for Sequence {
 }
 
 // =====================================================================
-// SELECTOR NODE (Fallback) - GREEN Phase
+// SELECTOR NODE (Fallback)
 // =====================================================================
 
 pub struct Selector {
@@ -89,25 +90,78 @@ impl AsyncActionNode for Selector {
 
                 match status {
                     NodeStatus::Failure => {
-                        // Selector keeps trying the next child if one fails
                         current += 1;
                         self.current_child.store(current, Ordering::SeqCst);
                     }
                     NodeStatus::Success => {
-                        // Selector succeeds immediately if ANY child succeeds
                         self.current_child.store(0, Ordering::SeqCst);
                         return NodeStatus::Success;
                     }
                     NodeStatus::Running => {
-                        // Pause execution. Resume here next tick.
                         return NodeStatus::Running;
                     }
                 }
             }
 
-            // All children failed.
             self.current_child.store(0, Ordering::SeqCst);
             NodeStatus::Failure
+        })
+    }
+}
+
+// =====================================================================
+// PARALLEL NODE - GREEN Phase
+// =====================================================================
+
+pub struct Parallel {
+    children: Vec<Box<dyn AsyncActionNode>>,
+    success_threshold: usize,
+}
+
+impl Parallel {
+    pub fn new(children: Vec<Box<dyn AsyncActionNode>>, success_threshold: usize) -> Self {
+        Self {
+            children,
+            success_threshold,
+        }
+    }
+}
+
+impl AsyncActionNode for Parallel {
+    fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+        Box::pin(async move {
+            // Wir sammeln alle Futures der Kinder
+            let mut futures = Vec::new();
+            for child in &self.children {
+                futures.push(child.tick());
+            }
+
+            // Wir führen alle gleichzeitig (!) aus
+            let results = join_all(futures).await;
+
+            let mut successes = 0;
+            let mut failures = 0;
+
+            for status in results {
+                match status {
+                    NodeStatus::Success => successes += 1,
+                    NodeStatus::Failure => failures += 1,
+                    NodeStatus::Running => {}
+                }
+            }
+
+            let max_allowed_failures = self.children.len().saturating_sub(self.success_threshold);
+
+            if successes >= self.success_threshold {
+                // Threshold erreicht: Der Parallel-Knoten ist erfolgreich!
+                NodeStatus::Success
+            } else if failures > max_allowed_failures {
+                // Rechnerisch unmöglich, den Threshold noch zu erreichen.
+                NodeStatus::Failure
+            } else {
+                // Wir warten noch auf Kinder.
+                NodeStatus::Running
+            }
         })
     }
 }
@@ -175,39 +229,55 @@ mod tests {
         assert_eq!(sequence.tick().await, NodeStatus::Success);
     }
 
-    // --- Selector Node Tests (Story PR-1221) ---
+    // --- Selector Node Tests ---
 
     #[tokio::test]
     async fn test_selector_returns_failure_if_all_fail() {
         let child1 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
         let child2 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
         let selector = Selector::new(vec![child1, child2]);
-        
-        assert_eq!(selector.tick().await, NodeStatus::Failure, "Selector must return Failure if all children fail.");
+        assert_eq!(selector.tick().await, NodeStatus::Failure);
     }
 
     #[tokio::test]
     async fn test_selector_returns_success_immediately() {
         let child1 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
         let child2 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Success]));
-        let child3 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure])); // Should not be reached
-        
+        let child3 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure])); 
         let selector = Selector::new(vec![child1, child2, child3]);
-        
-        assert_eq!(selector.tick().await, NodeStatus::Success, "Selector must return Success immediately after a child succeeds.");
+        assert_eq!(selector.tick().await, NodeStatus::Success);
     }
 
     #[tokio::test]
     async fn test_selector_returns_running_and_resumes() {
         let child1 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
         let child2 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Running, NodeStatus::Success]));
-        
         let selector = Selector::new(vec![child1, child2]);
+        assert_eq!(selector.tick().await, NodeStatus::Running);
+        assert_eq!(selector.tick().await, NodeStatus::Success);
+    }
+
+    // --- Parallel Node Tests (Story PR-1222) ---
+
+    #[tokio::test]
+    async fn test_parallel_returns_success_when_threshold_reached() {
+        let child1 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Success]));
+        let child2 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Success]));
+        let child3 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Running]));
         
-        // Tick 1
-        assert_eq!(selector.tick().await, NodeStatus::Running, "Selector must return Running if a child is Running.");
+        let parallel = Parallel::new(vec![child1, child2, child3], 2);
         
-        // Tick 2 (Resume)
-        assert_eq!(selector.tick().await, NodeStatus::Success, "Selector must resume and eventually return Success.");
+        assert_eq!(parallel.tick().await, NodeStatus::Success, "Parallel must return Success when M children succeed.");
+    }
+
+    #[tokio::test]
+    async fn test_parallel_returns_failure_when_impossible_to_reach_threshold() {
+        let child1 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
+        let child2 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
+        let child3 = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Running]));
+        
+        let parallel = Parallel::new(vec![child1, child2, child3], 2);
+        
+        assert_eq!(parallel.tick().await, NodeStatus::Failure, "Parallel must return Failure when (N - M + 1) children fail.");
     }
 }
