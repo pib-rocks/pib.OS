@@ -197,6 +197,61 @@ impl AsyncActionNode for ConfigurableMockNode {
     }
 }
 
+
+// =====================================================================
+// DECORATOR NODES: Inverter & Timeout - RED Phase
+// =====================================================================
+
+pub struct Inverter {
+    child: Box<dyn AsyncActionNode>,
+}
+
+impl Inverter {
+    pub fn new(child: Box<dyn AsyncActionNode>) -> Self {
+        Self { child }
+    }
+}
+
+impl AsyncActionNode for Inverter {
+    fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+        Box::pin(async move {
+            let status = self.child.tick().await;
+            match status {
+                NodeStatus::Success => NodeStatus::Failure,
+                NodeStatus::Failure => NodeStatus::Success,
+                NodeStatus::Running => NodeStatus::Running,
+            }
+        })
+    }
+}
+
+use std::time::Duration;
+
+pub struct Timeout {
+    child: Box<dyn AsyncActionNode>,
+    duration: Duration,
+}
+
+impl Timeout {
+    pub fn new(child: Box<dyn AsyncActionNode>, duration: Duration) -> Self {
+        Self { child, duration }
+    }
+}
+
+impl AsyncActionNode for Timeout {
+    fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+        Box::pin(async move {
+            // tokio::time::timeout cancels the internal future if duration is reached
+            let result = tokio::time::timeout(self.duration, self.child.tick()).await;
+            
+            match result {
+                Ok(status) => status, // Child finished in time
+                Err(_) => NodeStatus::Failure, // Timeout occurred!
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,5 +334,46 @@ mod tests {
         let parallel = Parallel::new(vec![child1, child2, child3], 2);
         
         assert_eq!(parallel.tick().await, NodeStatus::Failure, "Parallel must return Failure when (N - M + 1) children fail.");
+    }
+
+    // --- Decorator Tests (Story PR-1223) ---
+
+    #[tokio::test]
+    async fn test_inverter_swaps_success_and_failure() {
+        let success_child = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Success]));
+        let failure_child = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Failure]));
+        
+        let inverter1 = Inverter::new(success_child);
+        let inverter2 = Inverter::new(failure_child);
+        
+        assert_eq!(inverter1.tick().await, NodeStatus::Failure, "Inverter must return Failure if child succeeds");
+        assert_eq!(inverter2.tick().await, NodeStatus::Success, "Inverter must return Success if child fails");
+    }
+
+    #[tokio::test]
+    async fn test_inverter_passes_running() {
+        let running_child = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Running]));
+        let inverter = Inverter::new(running_child);
+        
+        assert_eq!(inverter.tick().await, NodeStatus::Running, "Inverter must pass Running transparently");
+    }
+
+    struct SleepNode;
+    impl AsyncActionNode for SleepNode {
+        fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+            Box::pin(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                NodeStatus::Success
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_timeout_returns_failure_if_child_hangs() {
+        // Child takes 50ms, timeout is 10ms
+        let child = Box::new(SleepNode);
+        let timeout_node = Timeout::new(child, std::time::Duration::from_millis(10));
+        
+        assert_eq!(timeout_node.tick().await, NodeStatus::Failure, "Timeout must return Failure if child takes too long");
     }
 }
