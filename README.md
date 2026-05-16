@@ -43,7 +43,14 @@ npm run test
 The first implemented logic is the strict serialization of the visual React tree into the JSON structure expected by the Rust backend (`ui/src/treeExporter.ts`).
 
 ---
+
+### Network Interoperability (Phase 1: ROS2 / Zenoh)
+*   **`NetworkBackend` Trait**: Agnostic interface to bridge `pib.OS` into existing robotics networks (like ROS2 DDS or Eclipse Zenoh).
+*   **`NetworkPublisherNode`**: BT Action Node that serializes its payload and pushes it to a network topic (e.g., sending `cmd_vel` to a ROS2 base).
+*   **`NetworkSubscriberBridge`**: Asynchronous daemon that listens to network topics (e.g., Zenoh Lidar streams) and maps them seamlessly into the local Zero-Copy Blackboard.
+
 ## Getting Started
+
 
 
 ### Prerequisites
