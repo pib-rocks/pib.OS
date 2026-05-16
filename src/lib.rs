@@ -407,6 +407,41 @@ impl ScopedBlackboard {
     }
 }
 
+
+// =====================================================================
+// PUB/SUB BRIDGE - RED Phase
+// =====================================================================
+use tokio::sync::mpsc;
+
+pub struct PubSubBridge {
+    blackboard: Blackboard,
+}
+
+impl PubSubBridge {
+    pub fn new(blackboard: Blackboard) -> Self {
+        Self { blackboard }
+    }
+
+    /// Spawns a background task that listens to a channel (simulating Pub/Sub)
+    /// and updates the blackboard key automatically.
+    pub fn subscribe(&self, _topic: &str, bb_key: &str) -> mpsc::Sender<BlackboardValue> {
+        let (tx, mut rx) = mpsc::channel(100);
+        
+        let bb_clone = self.blackboard.clone();
+        let key_clone = bb_key.to_string();
+        
+        // GREEN PHASE: Spawn a lightweight Tokio task that listens forever
+        // and instantly mirrors incoming pub/sub messages to the Blackboard
+        tokio::spawn(async move {
+            while let Some(value) = rx.recv().await {
+                bb_clone.set(&key_clone, value);
+            }
+        });
+        
+        tx
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -658,5 +693,23 @@ mod tests {
         
         // Read from mapped local key
         assert_eq!(scoped.get("local_in"), Some(BlackboardValue::Text("World".to_string())), "Read from mapped local key must fetch from parent global key");
+    }
+
+    // --- Pub/Sub Bridge Tests (Story PR-1217) ---
+
+    #[tokio::test]
+    async fn test_pubsub_bridge_updates_blackboard() {
+        let bb = Blackboard::new();
+        let bridge = PubSubBridge::new(bb.clone());
+        
+        let tx = bridge.subscribe("sensor/lidar", "lidar_distance");
+        
+        // Simulate an incoming pub/sub message
+        tx.send(BlackboardValue::Float(2.5)).await.unwrap();
+        
+        // Yield execution to allow background task to process the message
+        tokio::task::yield_now().await;
+        
+        assert_eq!(bb.get("lidar_distance"), Some(BlackboardValue::Float(2.5)), "Pub/Sub bridge must automatically update the blackboard key");
     }
 }
