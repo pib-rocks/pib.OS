@@ -487,6 +487,39 @@ impl AsyncActionNode for GenericActuatorNode {
     }
 }
 
+
+// =====================================================================
+// INTROSPECTION (Live Tree Status Streaming) - RED Phase
+// =====================================================================
+use tokio::sync::broadcast;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeStateEvent {
+    pub node_id: String,
+    pub state: NodeStatus,
+}
+
+pub struct Telemetry {
+    pub tx: broadcast::Sender<NodeStateEvent>,
+}
+
+impl Telemetry {
+    pub fn new() -> Self {
+        let (tx, _) = broadcast::channel(100);
+        Self { tx }
+    }
+
+    pub fn report_state(&self, node_id: &str, state: NodeStatus) {
+        // GREEN PHASE: Broadcast the state to all connected WebSockets/Observers
+        let event = NodeStateEvent {
+            node_id: node_id.to_string(),
+            state,
+        };
+        // We ignore the error because it just means no WebSockets are currently connected
+        let _ = self.tx.send(event);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -788,5 +821,24 @@ mod tests {
         drop(rx);
         
         assert_eq!(node.tick().await, NodeStatus::Failure, "Actuator node must return Failure if hardware driver is unreachable");
+    }
+
+    // --- Introspection Tests (Story PR-1219) ---
+
+    #[tokio::test]
+    async fn test_telemetry_broadcasts_node_state_changes() {
+        let telemetry = Telemetry::new();
+        let mut rx = telemetry.tx.subscribe();
+        
+        telemetry.report_state("node_42", NodeStatus::Running);
+        telemetry.report_state("node_42", NodeStatus::Success);
+        
+        let event1 = rx.recv().await.unwrap();
+        assert_eq!(event1.node_id, "node_42");
+        assert_eq!(event1.state, NodeStatus::Running);
+        
+        let event2 = rx.recv().await.unwrap();
+        assert_eq!(event2.node_id, "node_42");
+        assert_eq!(event2.state, NodeStatus::Success, "Telemetry must broadcast the exact state changes to subscribers");
     }
 }
