@@ -284,6 +284,47 @@ impl AsyncActionNode for Condition {
     }
 }
 
+
+// =====================================================================
+// TICK ENGINE - RED Phase
+// =====================================================================
+
+pub struct TickEngine {
+    root: Box<dyn AsyncActionNode>,
+    tick_interval: Duration,
+}
+
+impl TickEngine {
+    pub fn new(root: Box<dyn AsyncActionNode>, hz: u32) -> Self {
+        Self {
+            root,
+            tick_interval: Duration::from_millis(1000 / hz as u64),
+        }
+    }
+
+    pub async fn run(&self) -> NodeStatus {
+        let mut interval = tokio::time::interval(self.tick_interval);
+
+        loop {
+            // Wait for the next scheduled tick according to Hz
+            interval.tick().await;
+
+            let status = self.root.tick().await;
+
+            match status {
+                NodeStatus::Success | NodeStatus::Failure => {
+                    // Tree completed its logic, halt the engine
+                    return status;
+                }
+                NodeStatus::Running => {
+                    // Tree is still working (e.g. driving), wait for next tick
+                    continue;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -421,5 +462,30 @@ mod tests {
     async fn test_condition_returns_failure_when_false() {
         let condition = Condition::new(|| false);
         assert_eq!(condition.tick().await, NodeStatus::Failure, "Condition must return Failure if predicate is false");
+    }
+
+    // --- Tick Engine Tests (Story PR-1213) ---
+
+    #[tokio::test]
+    async fn test_engine_halts_on_success() {
+        let root = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Running, NodeStatus::Success]));
+        let engine = TickEngine::new(root, 100);
+        
+        assert_eq!(engine.run().await, NodeStatus::Success, "Engine must halt and return Success when tree completes");
+    }
+
+    #[tokio::test]
+    async fn test_engine_ticks_at_given_rate() {
+        // Node takes 3 ticks to succeed: Running, Running, Success
+        let root = Box::new(ConfigurableMockNode::new(vec![NodeStatus::Running, NodeStatus::Running, NodeStatus::Success]));
+        let engine = TickEngine::new(root, 10); // 10Hz = 100ms per tick
+        
+        let start = tokio::time::Instant::now();
+        engine.run().await;
+        let elapsed = start.elapsed();
+        
+        // 3 ticks at 100ms each should take at least ~200ms (interval fires immediately for the first tick)
+        assert!(elapsed.as_millis() >= 200, "Engine finished too quickly: {} ms", elapsed.as_millis());
+        assert!(elapsed.as_millis() < 400, "Engine took too long: {} ms", elapsed.as_millis());
     }
 }
