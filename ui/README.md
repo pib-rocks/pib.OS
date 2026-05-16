@@ -1,73 +1,44 @@
-# React + TypeScript + Vite
+# pib.OS Editor (Frontend)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains the visual drag-and-drop Behavior Tree editor for pib.OS.
 
-Currently, two official plugins are available:
+## Architecture: Micro-Frontend (Web Component)
+The editor is built using **React, TypeScript, and Vite** to leverage the powerful ecosystem of node-based editing tools (like React Flow). However, because the main robotics dashboard (**pib.Cerebra**) is built in **Angular**, this project is designed as a Micro-Frontend.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+It serves two purposes:
+1. **Standalone Application:** It runs as a standalone React app for rapid UI development and Test-Driven Development (TDD).
+2. **Web Component Export:** The production build packages the entire React application into a framework-agnostic HTML Custom Element (`<pib-os-editor>`). This allows the Angular team to seamlessly drop the editor into `pib.Cerebra` without dealing with React dependencies.
 
-## React Compiler
+## Standalone Execution & Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+You can run the editor completely independently of `pib.Cerebra` to test nodes, styling, and the WebSocket connection.
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Installation
+```bash
+cd ui
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Run the Dev Server (Standalone)
+This will spin up a local Vite development server where you can interact with the editor in your browser.
+```bash
+npm run dev
+```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Run the Tests (TDD)
+We enforce a strict RED-GREEN-REFACTOR workflow using **Vitest**. All tree logic and JSON serialization must be tested here:
+```bash
+npm run test
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Integration into pib.Cerebra (Angular)
+*(Note: Web Component build script configuration is upcoming)*
+Once built via `npm run build`, the output can be imported into Angular. You can then use it natively in any Angular template:
+
+```html
+<!-- Inside pib.Cerebra Angular Template -->
+<pib-os-editor 
+    [treeData]="currentRobotTree" 
+    (onExport)="handleTreeExport($event)">
+</pib-os-editor>
 ```
