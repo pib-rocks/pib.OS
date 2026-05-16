@@ -122,3 +122,5 @@ We specifically track:
 * **Tree Engine**: Ticking large tree topologies, like a 100-child Sequence node.
 
 Ensure regressions do not exceed 5% on the primary operations.
+## Persistence
+Uses SeaORM with SQLite for workspace management, saving and loading projects.
