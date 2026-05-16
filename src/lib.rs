@@ -369,6 +369,44 @@ impl Blackboard {
     }
 }
 
+
+// =====================================================================
+// SCOPED BLACKBOARD - RED Phase
+// =====================================================================
+
+#[derive(Clone)]
+pub struct ScopedBlackboard {
+    parent: Blackboard,
+    local: Blackboard,
+    mapping: HashMap<String, String>, // Maps local_key -> parent_key
+}
+
+impl ScopedBlackboard {
+    pub fn new(parent: Blackboard, mapping: HashMap<String, String>) -> Self {
+        Self {
+            parent,
+            local: Blackboard::new(),
+            mapping,
+        }
+    }
+
+    pub fn set(&self, key: &str, value: BlackboardValue) {
+        if let Some(parent_key) = self.mapping.get(key) {
+            self.parent.set(parent_key, value);
+        } else {
+            self.local.set(key, value);
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<BlackboardValue> {
+        if let Some(parent_key) = self.mapping.get(key) {
+            self.parent.get(parent_key)
+        } else {
+            self.local.get(key)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -583,5 +621,42 @@ mod tests {
         
         // After write is done, it MUST be true.
         assert_eq!(bb.get("Y"), Some(BlackboardValue::Bool(true)), "Final value must be the written one");
+    }
+
+    // --- Scoped Blackboard Tests (Story PR-1216) ---
+
+    #[tokio::test]
+    async fn test_scoped_bb_isolates_unmapped_keys() {
+        let parent = Blackboard::new();
+        let scoped = ScopedBlackboard::new(parent.clone(), std::collections::HashMap::new());
+        
+        scoped.set("local_only", BlackboardValue::Int(1));
+        parent.set("parent_only", BlackboardValue::Int(2));
+        
+        assert_eq!(scoped.get("local_only"), Some(BlackboardValue::Int(1)));
+        assert_eq!(parent.get("local_only"), None, "Parent must not see isolated local keys");
+        
+        assert_eq!(scoped.get("parent_only"), None, "Scoped bb must not implicitly see parent keys unless mapped");
+    }
+
+    #[tokio::test]
+    async fn test_scoped_bb_maps_keys_to_parent() {
+        let parent = Blackboard::new();
+        let mut mapping = std::collections::HashMap::new();
+        mapping.insert("local_in".to_string(), "global_out".to_string());
+        
+        let scoped = ScopedBlackboard::new(parent.clone(), mapping);
+        
+        // Write to mapped local key
+        scoped.set("local_in", BlackboardValue::Text("Hello".to_string()));
+        
+        // Read from parent global key
+        assert_eq!(parent.get("global_out"), Some(BlackboardValue::Text("Hello".to_string())), "Write to mapped local key must reflect in parent global key");
+        
+        // Write to parent global key
+        parent.set("global_out", BlackboardValue::Text("World".to_string()));
+        
+        // Read from mapped local key
+        assert_eq!(scoped.get("local_in"), Some(BlackboardValue::Text("World".to_string())), "Read from mapped local key must fetch from parent global key");
     }
 }
