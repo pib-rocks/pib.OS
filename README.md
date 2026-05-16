@@ -27,6 +27,22 @@ We are currently building the fundamental Behavior Tree node structures using st
 *   **Zero-Copy `Blackboard`**: Lock-free concurrent data bus utilizing `Arc<RwLock<HashMap>>` to distribute sensor data safely among hundreds of nodes.
 *   **`ScopedBlackboard`**: Data isolation allowing sub-trees to have local scopes while mapping explicit keys up to the parent Blackboard.
 
+
+## Frontend: Visual Editor MVP (React/TS)
+The `ui/` directory contains the scaffold for the "Visual-First" approach. We are building the drag-and-drop Behavior Tree editor using React, TypeScript, and Vite.
+
+### Run the Frontend Tests (TDD)
+The frontend uses the exact same RED-GREEN-REFACTOR approach as the Rust core, powered by **Vitest**:
+```bash
+cd ui
+npm install
+npm run test
+```
+
+### JSON Export Logic
+The first implemented logic is the strict serialization of the visual React tree into the JSON structure expected by the Rust backend (`ui/src/treeExporter.ts`).
+
+---
 ## Getting Started
 
 
