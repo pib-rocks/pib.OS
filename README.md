@@ -43,35 +43,23 @@ cargo build --release
 
 ## Usage
 
-Since `pib.OS` acts as a middleware library, it is typically embedded into your robotic control application. 
+## Usage
 
-### Starting the Engine and API
-To start the Behavior Tree execution engine alongside the API and Telemetry server:
+With the new standalone runner, you can execute behavior trees directly via the command line.
 
-```rust
-use pib_os::api::start_api_server;
-use pib_os::parser::parse_tree;
-use tokio::net::TcpListener;
+### Running pib.OS (Standalone)
 
-#[tokio::main]
-async fn main() {
-    // 1. Load a Behavior Tree configuration (e.g., exported from pib.Cerebra)
-    let json_config = r#"{
-        "root": { "type": "Sequence", "children": [] }
-    }"#;
-    
-    // 2. Parse the tree
-    let tree = parse_tree(json_config).expect("Invalid tree format");
-    
-    // 3. Start the API and WebSocket server on port 3000
-    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("API and Telemetry Server running on ws://0.0.0.0:3000/ws/telemetry");
-    
-    // Serve the API endpoints
-    start_api_server(listener).await.unwrap();
-}
+Start the execution engine alongside the API and Telemetry server:
+```bash
+cargo run --bin pib_os
 ```
-*(Note: The `start_api_server` and engine integration is handled asynchronously by the `tokio` runtime.)*
+This automatically starts the Behavior Tree Engine and the WebSocket API server on `ws://0.0.0.0:3000/ws/telemetry`.
+
+### Mock Nodes for UI Testing
+`pib.OS` now includes interactive mock nodes (`SleepNode` and `LogNode`) designed specifically to test live telemetry. These nodes artificially yield (pause) execution so you can visually observe the "Running" state streaming into the Cerebra UI in real-time.
+
+### Zenoh Network Backend
+The middleware is fully integrated with [Eclipse Zenoh](https://zenoh.io/). Real hardware data and commands can be routed seamlessly between the Behavior Tree's Zero-Copy Blackboard and the Zenoh network using the `ZenohBackend` implementation.
 
 
 ## Graphical User Interface (pib.Cerebra MVP)
