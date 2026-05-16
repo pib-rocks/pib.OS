@@ -442,6 +442,51 @@ impl PubSubBridge {
     }
 }
 
+
+// =====================================================================
+// GENERIC ACTUATOR - RED Phase
+// =====================================================================
+use tokio::sync::oneshot;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum GenericCommand {
+    Move { x: f64, y: f64, z: f64 },
+    Grip { force: f64 },
+}
+
+pub struct GenericActuatorNode {
+    command: GenericCommand,
+    command_tx: mpsc::Sender<(GenericCommand, oneshot::Sender<NodeStatus>)>,
+}
+
+impl GenericActuatorNode {
+    pub fn new(
+        command: GenericCommand, 
+        command_tx: mpsc::Sender<(GenericCommand, oneshot::Sender<NodeStatus>)>
+    ) -> Self {
+        Self { command, command_tx }
+    }
+}
+
+impl AsyncActionNode for GenericActuatorNode {
+    fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+        Box::pin(async move {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            
+            // Send the command to the hardware driver (or return Failure if driver is dead)
+            if self.command_tx.send((self.command.clone(), reply_tx)).await.is_err() {
+                return NodeStatus::Failure;
+            }
+            
+            // Wait for the driver to complete the hardware action
+            match reply_rx.await {
+                Ok(status) => status,
+                Err(_) => NodeStatus::Failure, // Driver dropped the oneshot channel
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -711,5 +756,37 @@ mod tests {
         tokio::task::yield_now().await;
         
         assert_eq!(bb.get("lidar_distance"), Some(BlackboardValue::Float(2.5)), "Pub/Sub bridge must automatically update the blackboard key");
+    }
+
+    // --- Generic Actuator Tests (Story PR-1218) ---
+
+    #[tokio::test]
+    async fn test_generic_actuator_sends_command_and_awaits_result() {
+        let (tx, mut rx) = mpsc::channel(10);
+        let command = GenericCommand::Move { x: 1.0, y: 0.0, z: 0.0 };
+        let node = GenericActuatorNode::new(command.clone(), tx);
+        
+        // Spawn a mock driver in the background
+        tokio::spawn(async move {
+            if let Some((recv_cmd, reply_tx)) = rx.recv().await {
+                assert_eq!(recv_cmd, GenericCommand::Move { x: 1.0, y: 0.0, z: 0.0 });
+                // Driver successfully completes the movement
+                let _ = reply_tx.send(NodeStatus::Success);
+            }
+        });
+        
+        // The node should tick, wait for the mock driver, and return Success
+        assert_eq!(node.tick().await, NodeStatus::Success, "Actuator node must send command and return driver's status");
+    }
+
+    #[tokio::test]
+    async fn test_generic_actuator_returns_failure_if_driver_disconnected() {
+        let (tx, rx) = mpsc::channel(10);
+        let node = GenericActuatorNode::new(GenericCommand::Grip { force: 10.0 }, tx);
+        
+        // Drop the receiver (driver crashed/disconnected)
+        drop(rx);
+        
+        assert_eq!(node.tick().await, NodeStatus::Failure, "Actuator node must return Failure if hardware driver is unreachable");
     }
 }
