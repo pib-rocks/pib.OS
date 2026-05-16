@@ -1,86 +1,86 @@
 # pib.OS - The Reactive Behavior Tree Middleware
 
-**pib.OS** is the open-source, rust-based operating system and middleware for the `pib` robotics project. 
+**pib.OS** is an open-source, Rust-based operating system and middleware tailored for the `pib` (printable intelligent bot) robotics platform.
 
 It aims to democratize robotics by replacing rigid, callback-based systems with a highly reactive, node-based **Behavior Tree (BT)** architecture. Designed with a *Visual-First* mindset, pib.OS serves as the invisible, memory-safe backend for drag-and-drop robot programming.
 
-## Vision: The "Unity-Moment" for Robotics
-1. **Visual-First (No-Code/Low-Code):** Build robotic behaviors by connecting logical blocks.
-2. **Safety by Design:** Written entirely in Rust. No Segfaults, no Race Conditions.
-3. **True Asynchronicity:** Every action node is a native `Future`, allowing true parallel execution of I/O bounds without blocking the tree.
-4. **Hardware Abstraction:** "Bring your own robot" - hardware acts purely as reactive data providers.
+## Features
 
-## Current Architecture (Epic: The Reactive Core)
-We are currently building the fundamental Behavior Tree node structures using strict **Test-Driven Development (TDD)**.
+### Core Behavior Tree Engine
+*   **Asynchronous Execution:** Every action node is a native `Future`. `pib.OS` evaluates the behavior tree asynchronously, allowing true parallel execution of I/O bounds without blocking the entire tree.
+*   **Control Nodes:** Complete set of control flow nodes including `Sequence` (fails on first failure), `Selector` (succeeds on first success), and `Parallel` (spawns concurrent executions with configurable success thresholds).
+*   **Decorator Nodes:** Modifiers like `Inverter` and `Timeout` to manipulate the status of child nodes or handle hanging tasks.
+*   **Condition Nodes:** Instantaneous read nodes to make synchronous routing decisions without yielding.
 
+### State & Memory Management
+*   **Zero-Copy Blackboard:** A lock-free, concurrent data bus utilizing interior mutability to distribute sensor data efficiently across hundreds of nodes.
+*   **Scoped Blackboards:** Supports local scopes for sub-trees, isolating internal data while mapping explicit keys up to the parent Blackboard via Port Mapping.
 
-### Implemented Node Types & Features
-*   **`AsyncActionNode` Trait**: The foundational trait requiring a `tick()` function that yields a pinned `Future` resolving to a `NodeStatus` (`Success`, `Failure`, `Running`).
-*   **`Sequence` Node**: Evaluates children sequentially. Yields `Failure` if any child fails.
-*   **`Selector` Node**: Evaluates children sequentially but acts as a fallback. Yields `Success` as soon as any child succeeds.
-*   **`Parallel` Node**: Spawns and awaits multiple children *concurrently* using `futures::join_all`. Evaluates success based on a configurable `success_threshold`.
-*   **Decorator Nodes (`Inverter`, `Timeout`)**: Modifies the behavior of children (e.g., hard-canceling a hanging I/O Future via Tokio's timeout).
-*   **`Condition` Node**: Synchronously reads values (e.g., from the Blackboard) to make instant routing decisions without yielding.
+### Network Interoperability & API
+*   **Live Telemetry via WebSockets:** Exposes an Axum-based WebSocket server (`/ws/telemetry`) that streams real-time `NodeStateEvent`s. This allows frontends (like pib.Cerebra) to visualize the exact state of the behavior tree during runtime.
+*   **Dynamic Node Registry API:** A REST endpoint (`GET /api/registry`) that enumerates all available nodes and their required data ports, allowing dynamic UI toolbox rendering.
+*   **JSON Tree Parser:** Dynamically deserializes and constructs complex Behavior Trees and `ScopedBlackboard` configurations at runtime using `serde_json`.
+*   **Network Bridging:** Built-in traits to bridge `pib.OS` to networks like ROS2 or Zenoh (e.g., `NetworkPublisherNode`, `NetworkSubscriberBridge`).
 
-### Tick Engine & Memory
-*   **`TickEngine`**: The core loop using `tokio::time::interval` to guarantee precise Hz execution rates.
-*   **Zero-Copy `Blackboard`**: Lock-free concurrent data bus utilizing `Arc<RwLock<HashMap>>` to distribute sensor data safely among hundreds of nodes.
-*   **`ScopedBlackboard`**: Data isolation allowing sub-trees to have local scopes while mapping explicit keys up to the parent Blackboard.
-
-
-## Frontend: Visual Editor MVP (React/TS)
-The `ui/` directory contains the scaffold for the "Visual-First" approach. We are building the drag-and-drop Behavior Tree editor using React, TypeScript, and Vite.
-
-### Run the Frontend Tests (TDD)
-The frontend uses the exact same RED-GREEN-REFACTOR approach as the Rust core, powered by **Vitest**:
-```bash
-cd ui
-npm install
-npm run test
-```
-
-### JSON Export Logic
-The first implemented logic is the strict serialization of the visual React tree into the JSON structure expected by the Rust backend (`ui/src/treeExporter.ts`).
-
----
-
-### Network Interoperability (Phase 1: ROS2 / Zenoh)
-*   **`NetworkBackend` Trait**: Agnostic interface to bridge `pib.OS` into existing robotics networks (like ROS2 DDS or Eclipse Zenoh).
-*   **`NetworkPublisherNode`**: BT Action Node that serializes its payload and pushes it to a network topic (e.g., sending `cmd_vel` to a ROS2 base).
-*   **`NetworkSubscriberBridge`**: Asynchronous daemon that listens to network topics (e.g., Zenoh Lidar streams) and maps them seamlessly into the local Zero-Copy Blackboard.
-
-
-### Groot2 vs pib.OS Gap Analysis & Infrastructure Needs
-
-To fully utilize the newly implemented React Flow Groot2-like features, the Rust `pib.OS` core requires the following infrastructure additions:
-
-1.  **WebSocket Server (for Live Telemetry):**
-    *   *Current State:* The Rust engine has a `Telemetry` struct broadcasting `NodeStateEvent`s over a `tokio::sync::broadcast` channel.
-    *   *Missing:* An HTTP/WebSocket runtime (e.g., `axum` or `warp`) to expose this broadcast channel to the Cerebra UI on a specific port.
-2.  **Tree Parser & Port Mapping Engine:**
-    *   *Current State:* The UI exports JSON with flattened Subtrees and strict `port_mapping` configurations.
-    *   *Missing:* A Rust JSON deserializer (`serde_json`) that dynamically constructs the tree of `AsyncActionNode` traits at runtime and automatically initializes the `ScopedBlackboard` using the exported `port_mapping` keys.
-3.  **Dynamic Node Registry API:**
-    *   *Current State:* The UI dynamically renders the node toolbox based on a JSON schema.
-    *   *Missing:* A Rust REST endpoint (`GET /api/registry`) that enumerates all `structs` implementing `AsyncActionNode` and their required `dataPorts`.
-
-## Getting Started
-
-
-
+## Installation
 
 ### Prerequisites
-*   [Rust Toolchain](https://rustup.rs/) (edition 2021)
-*   Cargo
+*   [Rust Toolchain](https://rustup.rs/) (edition 2021 or newer)
+*   `cargo` package manager
 
-### Build & Test
-The core is built using a strict TDD approach. To run the test suite:
+### Getting the Source Code
+Clone the repository to your local machine:
+```bash
+git clone https://github.com/pib-rocks/pib.OS.git
+cd pib.OS
+```
+
+### Building the Project
+Build the library and its dependencies:
+```bash
+cargo build --release
+```
+
+## Usage
+
+Since `pib.OS` acts as a middleware library, it is typically embedded into your robotic control application. 
+
+### Starting the Engine and API
+To start the Behavior Tree execution engine alongside the API and Telemetry server:
+
+```rust
+use pib_os::api::start_api_server;
+use pib_os::parser::parse_tree;
+use tokio::net::TcpListener;
+
+#[tokio::main]
+async fn main() {
+    // 1. Load a Behavior Tree configuration (e.g., exported from pib.Cerebra)
+    let json_config = r#"{
+        "root": { "type": "Sequence", "children": [] }
+    }"#;
+    
+    // 2. Parse the tree
+    let tree = parse_tree(json_config).expect("Invalid tree format");
+    
+    // 3. Start the API and WebSocket server on port 3000
+    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    println!("API and Telemetry Server running on ws://0.0.0.0:3000/ws/telemetry");
+    
+    // Serve the API endpoints
+    start_api_server(listener).await.unwrap();
+}
+```
+*(Note: The `start_api_server` and engine integration is handled asynchronously by the `tokio` runtime.)*
+
+## Running Tests
+
+`pib.OS` is developed strictly using **Test-Driven Development (TDD)** (RED-GREEN-REFACTOR). The test suite includes unit tests for all nodes, the blackboard, parser, and the HTTP/WebSocket APIs.
+
+To execute the entire test suite:
+
 ```bash
 cargo test
 ```
 
-## Contributing (TDD Workflow)
-We enforce a RED-GREEN-REFACTOR workflow for all logic additions:
-1.  **Write a test** that fails according to the acceptance criteria.
-2.  **Implement the logic** to make the test pass.
-3.  **Refactor** the code for safety and performance (Zero-Copy).
+This will automatically download all necessary development dependencies, compile the project, and run all test modules to verify the integrity of the middleware.
