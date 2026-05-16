@@ -110,3 +110,15 @@ To run the E2E tests:
 cd ui
 npx playwright test --project=chromium
 ```
+### Benchmarks & Regression Testing
+Performance is critical for the Behavior Tree Engine. We use `criterion` to benchmark core components. To run the benchmark suite and protect against regressions:
+
+```bash
+cargo bench
+```
+
+We specifically track:
+* **Blackboard**: Read/write latency, especially for scoped variables mapping.
+* **Tree Engine**: Ticking large tree topologies, like a 100-child Sequence node.
+
+Ensure regressions do not exceed 5% on the primary operations.
