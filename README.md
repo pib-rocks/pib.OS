@@ -100,3 +100,13 @@ cargo test
 ```
 
 This will automatically download all necessary development dependencies, compile the project, and run all test modules to verify the integrity of the middleware.
+
+### End-to-End Tests (Playwright)
+
+The UI component uses Playwright for End-to-End testing.
+To run the E2E tests:
+
+```bash
+cd ui
+npx playwright test --project=chromium
+```
