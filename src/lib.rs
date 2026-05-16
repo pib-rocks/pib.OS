@@ -325,6 +325,50 @@ impl TickEngine {
     }
 }
 
+
+// =====================================================================
+// BLACKBOARD - RED Phase
+// =====================================================================
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum BlackboardValue {
+    Int(i32),
+    Float(f64),
+    Text(String),
+    Bool(bool),
+}
+
+#[derive(Clone)]
+pub struct Blackboard {
+    data: Arc<RwLock<HashMap<String, BlackboardValue>>>,
+}
+
+impl Blackboard {
+    pub fn new() -> Self {
+        Self {
+            data: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    pub fn set(&self, key: &str, value: BlackboardValue) {
+        // acquire write lock, this will block until all active reads finish
+        if let Ok(mut map) = self.data.write() {
+            map.insert(key.to_string(), value);
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<BlackboardValue> {
+        // acquire read lock, multiple threads can read concurrently
+        if let Ok(map) = self.data.read() {
+            map.get(key).cloned()
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,5 +531,57 @@ mod tests {
         // 3 ticks at 100ms each should take at least ~200ms (interval fires immediately for the first tick)
         assert!(elapsed.as_millis() >= 200, "Engine finished too quickly: {} ms", elapsed.as_millis());
         assert!(elapsed.as_millis() < 400, "Engine took too long: {} ms", elapsed.as_millis());
+    }
+
+    // --- Blackboard Tests (Story PR-1215) ---
+
+    #[tokio::test]
+    async fn test_blackboard_returns_none_for_missing_key() {
+        let bb = Blackboard::new();
+        // This will pass in RED phase because we hardcoded None
+        assert_eq!(bb.get("missing"), None, "Must return None for missing keys");
+    }
+
+    #[tokio::test]
+    async fn test_blackboard_concurrent_reads() {
+        let bb = Blackboard::new();
+        bb.set("X", BlackboardValue::Int(42));
+
+        let mut handles = vec![];
+        for _ in 0..100 {
+            let bb_clone = bb.clone();
+            handles.push(tokio::spawn(async move {
+                bb_clone.get("X")
+            }));
+        }
+
+        for handle in handles {
+            let res = handle.await.unwrap();
+            assert_eq!(res, Some(BlackboardValue::Int(42)), "Concurrent reads must return the correct value");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_blackboard_read_write_consistency() {
+        let bb = Blackboard::new();
+        bb.set("Y", BlackboardValue::Bool(false));
+
+        let bb_write = bb.clone();
+        let write_handle = tokio::spawn(async move {
+            bb_write.set("Y", BlackboardValue::Bool(true));
+        });
+
+        let bb_read = bb.clone();
+        let read_handle = tokio::spawn(async move {
+            bb_read.get("Y")
+        });
+
+        write_handle.await.unwrap();
+        let read_res = read_handle.await.unwrap();
+        
+        assert!(read_res == Some(BlackboardValue::Bool(false)) || read_res == Some(BlackboardValue::Bool(true)), "Read during write must not panic or tear");
+        
+        // After write is done, it MUST be true.
+        assert_eq!(bb.get("Y"), Some(BlackboardValue::Bool(true)), "Final value must be the written one");
     }
 }
