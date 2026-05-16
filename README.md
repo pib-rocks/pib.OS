@@ -49,7 +49,23 @@ The first implemented logic is the strict serialization of the visual React tree
 *   **`NetworkPublisherNode`**: BT Action Node that serializes its payload and pushes it to a network topic (e.g., sending `cmd_vel` to a ROS2 base).
 *   **`NetworkSubscriberBridge`**: Asynchronous daemon that listens to network topics (e.g., Zenoh Lidar streams) and maps them seamlessly into the local Zero-Copy Blackboard.
 
+
+### Groot2 vs pib.OS Gap Analysis & Infrastructure Needs
+
+To fully utilize the newly implemented React Flow Groot2-like features, the Rust `pib.OS` core requires the following infrastructure additions:
+
+1.  **WebSocket Server (for Live Telemetry):**
+    *   *Current State:* The Rust engine has a `Telemetry` struct broadcasting `NodeStateEvent`s over a `tokio::sync::broadcast` channel.
+    *   *Missing:* An HTTP/WebSocket runtime (e.g., `axum` or `warp`) to expose this broadcast channel to the Cerebra UI on a specific port.
+2.  **Tree Parser & Port Mapping Engine:**
+    *   *Current State:* The UI exports JSON with flattened Subtrees and strict `port_mapping` configurations.
+    *   *Missing:* A Rust JSON deserializer (`serde_json`) that dynamically constructs the tree of `AsyncActionNode` traits at runtime and automatically initializes the `ScopedBlackboard` using the exported `port_mapping` keys.
+3.  **Dynamic Node Registry API:**
+    *   *Current State:* The UI dynamically renders the node toolbox based on a JSON schema.
+    *   *Missing:* A Rust REST endpoint (`GET /api/registry`) that enumerates all `structs` implementing `AsyncActionNode` and their required `dataPorts`.
+
 ## Getting Started
+
 
 
 
