@@ -1,6 +1,8 @@
 pub mod api;
 pub mod parser;
 pub mod network;
+pub mod mock_nodes;
+pub mod zenoh_backend;
 
 use std::future::Future;
 use std::pin::Pin;
