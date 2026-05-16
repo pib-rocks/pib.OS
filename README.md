@@ -73,6 +73,34 @@ async fn main() {
 ```
 *(Note: The `start_api_server` and engine integration is handled asynchronously by the `tokio` runtime.)*
 
+
+## Graphical User Interface (pib.Cerebra MVP)
+
+The project includes a Visual-First editor MVP built with React, TypeScript, and Vite. This frontend serves as the control center (dashboard) for designing and monitoring robot behaviors.
+
+### UI Features
+*   **Drag & Drop Editor:** Visually construct behavior trees by connecting action, condition, and control flow nodes.
+*   **Dynamic Node Toolbox:** (Planned Integration) Dynamically populates available nodes by querying the `pib.OS` backend registry (`/api/registry`).
+*   **JSON Export:** Serializes the visual tree and local scoped variable mappings (Port Mapping) into a JSON format that the Rust backend can parse and execute.
+*   **Live Telemetry:** (Planned Integration) Connects to the backend WebSocket (`/ws/telemetry`) to animate the behavior tree, showing real-time execution states (Running, Success, Failure) of each node.
+
+### Starting the GUI
+Make sure you have Node.js and `npm` installed.
+
+1. Navigate to the `ui` directory:
+   ```bash
+   cd ui
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+This will launch the Vite development server, usually accessible at `http://localhost:5173`.
+
 ## Running Tests
 
 `pib.OS` is developed strictly using **Test-Driven Development (TDD)** (RED-GREEN-REFACTOR). The test suite includes unit tests for all nodes, the blackboard, parser, and the HTTP/WebSocket APIs.
