@@ -252,6 +252,38 @@ impl AsyncActionNode for Timeout {
     }
 }
 
+
+// =====================================================================
+// CONDITION NODE - RED Phase
+// =====================================================================
+
+pub struct Condition {
+    predicate: Box<dyn Fn() -> bool + Send + Sync>,
+}
+
+impl Condition {
+    pub fn new<F>(predicate: F) -> Self
+    where
+        F: Fn() -> bool + Send + Sync + 'static,
+    {
+        Self {
+            predicate: Box::new(predicate),
+        }
+    }
+}
+
+impl AsyncActionNode for Condition {
+    fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+        Box::pin(async move {
+            if (self.predicate)() {
+                NodeStatus::Success
+            } else {
+                NodeStatus::Failure
+            }
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,5 +407,19 @@ mod tests {
         let timeout_node = Timeout::new(child, std::time::Duration::from_millis(10));
         
         assert_eq!(timeout_node.tick().await, NodeStatus::Failure, "Timeout must return Failure if child takes too long");
+    }
+
+    // --- Condition Tests (Story PR-1224) ---
+
+    #[tokio::test]
+    async fn test_condition_returns_success_when_true() {
+        let condition = Condition::new(|| true);
+        assert_eq!(condition.tick().await, NodeStatus::Success, "Condition must return Success if predicate is true");
+    }
+
+    #[tokio::test]
+    async fn test_condition_returns_failure_when_false() {
+        let condition = Condition::new(|| false);
+        assert_eq!(condition.tick().await, NodeStatus::Failure, "Condition must return Failure if predicate is false");
     }
 }
