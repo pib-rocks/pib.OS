@@ -844,3 +844,45 @@ impl Telemetry {
         assert_eq!(event2.state, NodeStatus::Success, "Telemetry must broadcast the exact state changes to subscribers");
     }
 
+
+// =====================================================================
+// SUBTREE NODE
+// =====================================================================
+
+pub struct SubtreeNode {
+    subtree_root: Box<dyn AsyncActionNode>,
+    scoped_blackboard: ScopedBlackboard,
+}
+
+impl SubtreeNode {
+    pub fn new(subtree_root: Box<dyn AsyncActionNode>, scoped_blackboard: ScopedBlackboard) -> Self {
+        Self { subtree_root, scoped_blackboard }
+    }
+}
+
+impl AsyncActionNode for SubtreeNode {
+    fn tick(&self) -> Pin<Box<dyn Future<Output = NodeStatus> + Send + '_>> {
+        Box::pin(async move {
+            self.subtree_root.tick().await
+        })
+    }
+}
+
+#[cfg(test)]
+mod subtree_tests {
+    use super::*;
+    use crate::mock_nodes::AlwaysSuccessNode;
+    use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn test_subtree_node() {
+        let root = Box::new(AlwaysSuccessNode::new());
+        let parent_bb = Blackboard::new();
+        let scoped_bb = ScopedBlackboard::new(parent_bb, HashMap::new());
+        
+        let subtree = SubtreeNode::new(root, scoped_bb);
+        let status = subtree.tick().await;
+        
+        assert_eq!(status, NodeStatus::Success);
+    }
+}

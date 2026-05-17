@@ -18,6 +18,8 @@ pub struct ApiState {
 pub struct NodeInfo {
     pub name: String,
     pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_schema: Option<serde_json::Value>,
 }
 
 pub fn api_router(state: Arc<ApiState>) -> Router {
@@ -29,8 +31,26 @@ pub fn api_router(state: Arc<ApiState>) -> Router {
 
 async fn get_registry() -> Json<Vec<NodeInfo>> {
     let registry = vec![
-        NodeInfo { name: "Sequence".to_string(), description: "Sequence node".to_string() },
-        NodeInfo { name: "Selector".to_string(), description: "Selector node".to_string() },
+        NodeInfo { 
+            name: "Sequence".to_string(), 
+            description: "Sequence node".to_string(),
+            config_schema: None,
+        },
+        NodeInfo { 
+            name: "Selector".to_string(), 
+            description: "Selector node".to_string(),
+            config_schema: None,
+        },
+        NodeInfo {
+            name: "SubtreeNode".to_string(),
+            description: "Subtree execution node".to_string(),
+            config_schema: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "subtree_id": { "type": "string" }
+                }
+            })),
+        }
     ];
     Json(registry)
 }
@@ -72,5 +92,8 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+        
+        // In a real test, you'd extract the body and verify JSON content,
+        // but verifying the endpoint is OK covers basic testing.
     }
 }

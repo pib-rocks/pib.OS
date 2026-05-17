@@ -124,3 +124,7 @@ We specifically track:
 Ensure regressions do not exceed 5% on the primary operations.
 ## Persistence
 Uses SeaORM with SQLite for workspace management, saving and loading projects.
+
+## Advanced Features
+- **Subtrees**: Evaluate behavior trees dynamically within `SubtreeNode`.
+- **Dynamic Properties Panel**: Edit configuration of nodes based on their schema, updated via the frontend properties editor.

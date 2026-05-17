@@ -9,8 +9,30 @@ test('Save and Load Project', async ({ page }) => {
     }
   });
 
+  await page.route('/api/registry', async route => {
+      await route.fulfill({ json: [
+          { name: "SubtreeNode", description: "Subtree node", config_schema: { type: "object" } }
+      ] });
+  });
+
   await page.goto('/');
-  // Assume UI has these
-  // await page.click('text=Save Project');
-  // await page.click('text=Load Project');
+});
+
+test('Properties Panel Visibility', async ({ page }) => {
+  await page.route('/api/registry', async route => {
+      await route.fulfill({ json: [
+          { name: "SubtreeNode", description: "Subtree node", config_schema: { type: "object" } }
+      ] });
+  });
+
+  await page.goto('/');
+  
+  // Click on the SubtreeNode in the toolbox
+  await page.click('text=SubtreeNode');
+  
+  // Verify Properties Panel is visible
+  await expect(page.locator('text=Properties: SubtreeNode')).toBeVisible();
+  
+  // Verify textarea for JSON config
+  await expect(page.locator('textarea')).toBeVisible();
 });

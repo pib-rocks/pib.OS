@@ -11,6 +11,8 @@ pub struct NodeDef {
     #[serde(default)]
     pub children: Vec<NodeDef>,
     #[serde(default)]
+    pub config: Option<serde_json::Value>,
+    #[serde(default)]
     pub ports: std::collections::HashMap<String, String>,
 }
 
@@ -28,7 +30,7 @@ mod tests {
             "root": {
                 "node_type": "Sequence",
                 "children": [
-                    { "node_type": "Condition", "ports": { "in": "blackboard_key" } }
+                    { "node_type": "Condition", "ports": { "in": "blackboard_key" }, "config": { "delay": 10 } }
                 ]
             }
         }"#;
@@ -37,5 +39,6 @@ mod tests {
         assert_eq!(tree.root.children.len(), 1);
         assert_eq!(tree.root.children[0].node_type, "Condition");
         assert_eq!(tree.root.children[0].ports.get("in").unwrap(), "blackboard_key");
+        assert!(tree.root.children[0].config.is_some());
     }
 }
